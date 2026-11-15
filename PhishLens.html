@@ -1,0 +1,705 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>PhishLens</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one-column instrument panel. Input on top, then a result card that shows the verdict, the URL broken into its parts, and every check that fired. Method table below. */
+:root{
+  --bg:#F2F5F7;
+  --surface:#FFFFFF;
+  --ink:#14212B;
+  --muted:#586976;
+  --line:#D3DBE1;
+  --accent:#0B6C78;
+  --accent-ink:#FFFFFF;
+  --accent-bg:#D9EEF0;
+  --ok:#1D7A4B;
+  --ok-bg:#E1F2E8;
+  --warn:#955408;
+  --warn-bg:#FAEACF;
+  --bad:#BE3426;
+  --bad-bg:#FBE3DF;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0D151B;
+    --surface:#141F27;
+    --ink:#E5ECF1;
+    --muted:#8FA1AE;
+    --line:#2A3944;
+    --accent:#55C2CD;
+    --accent-ink:#06181B;
+    --accent-bg:#12343A;
+    --ok:#58C48D;
+    --ok-bg:#12301F;
+    --warn:#E5A53F;
+    --warn-bg:#35260D;
+    --bad:#F27D6E;
+    --bad-bg:#3A1915;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0D151B;
+  --surface:#141F27;
+  --ink:#E5ECF1;
+  --muted:#8FA1AE;
+  --line:#2A3944;
+  --accent:#55C2CD;
+  --accent-ink:#06181B;
+  --accent-bg:#12343A;
+  --ok:#58C48D;
+  --ok-bg:#12301F;
+  --warn:#E5A53F;
+  --warn-bg:#35260D;
+  --bad:#F27D6E;
+  --bad-bg:#3A1915;
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+body{
+  background:var(--bg);
+  color:var(--ink);
+  font:15px/1.55 var(--sans);
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:22px 56px;
+}
+.wrap{max-width:920px;margin:0 auto;display:flex;flex-direction:column;gap:28px}
+h1,h2,h3,p{margin:0}
+h1{font-size:clamp(26px,5.2vw,38px);line-height:1.12;font-weight:600;letter-spacing:-0.015em;text-wrap:balance}
+h2{font-size:18px;font-weight:600;letter-spacing:-0.005em;text-wrap:balance}
+.label{font-size:12px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.lede{color:var(--muted);max-width:62ch}
+
+/* header */
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.mark{display:flex;align-items:center;gap:10px;font-weight:600;font-size:17px;letter-spacing:-0.01em}
+.mark svg{color:var(--accent);flex:none}
+.tag{font:500 12px var(--mono);color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 10px}
+.hero{display:flex;flex-direction:column;gap:10px}
+
+/* input */
+.finder{display:flex;flex-direction:column;gap:12px}
+.field{display:flex;gap:10px;flex-wrap:wrap}
+.field input{
+  flex:1 1 280px;min-width:0;height:48px;padding:0 14px;
+  font:400 15px var(--mono);color:var(--ink);background:var(--surface);
+  border:1px solid var(--line);border-radius:8px;
+}
+.field input::placeholder{color:var(--muted);opacity:.8}
+button{font-family:inherit}
+.go{
+  height:48px;padding:0 24px;border:0;border-radius:8px;cursor:pointer;
+  background:var(--accent);color:var(--accent-ink);font-weight:600;font-size:15px;
+}
+.go:hover{filter:brightness(1.07)}
+:is(button,input,summary):focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.examples{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.examples .label{margin-right:4px}
+.chip{
+  border:1px solid var(--line);background:var(--surface);color:var(--ink);
+  border-radius:999px;padding:6px 12px;font-size:13px;cursor:pointer;min-height:34px;
+}
+.chip:hover{border-color:var(--accent);color:var(--accent)}
+.fine{font-size:13px;color:var(--muted)}
+
+/* result */
+#result{
+  --lv:var(--ok);--lv-bg:var(--ok-bg);
+  background:var(--surface);border:1px solid var(--line);border-radius:12px;
+  padding:22px;display:flex;flex-direction:column;gap:22px;
+}
+#result[data-level="med"]{--lv:var(--warn);--lv-bg:var(--warn-bg)}
+#result[data-level="high"]{--lv:var(--bad);--lv-bg:var(--bad-bg)}
+.example-note{
+  align-self:flex-start;font-size:12px;font-weight:500;letter-spacing:.04em;
+  color:var(--accent);background:var(--accent-bg);border-radius:999px;padding:3px 10px;
+}
+.rhead{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.verdict{font-size:clamp(24px,4.6vw,32px);font-weight:600;letter-spacing:-0.015em;color:var(--lv);line-height:1.15}
+.vsub{color:var(--muted);max-width:56ch;margin-top:6px}
+.scorebox{font-family:var(--mono);display:flex;align-items:baseline;gap:4px;font-variant-numeric:tabular-nums}
+.scorebox b{font-size:44px;font-weight:500;line-height:1;color:var(--lv)}
+.scorebox span{color:var(--muted);font-size:14px}
+.meter{position:relative;height:10px;border-radius:5px;display:flex;overflow:hidden;background:var(--line)}
+.zone{height:100%}
+.z1{width:15%;background:var(--ok-bg)}
+.z2{width:25%;background:var(--warn-bg)}
+.z3{width:60%;background:var(--bad-bg)}
+.fill{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--lv);border-radius:5px 0 0 5px;transition:width .5s ease}
+.ticks{position:relative;height:16px;margin-top:6px;font:11px var(--mono);color:var(--muted)}
+.ticks span{position:absolute;top:0;transform:translateX(-50%)}
+.ticks span:first-child{transform:none}
+.ticks span:last-child{transform:translateX(-100%)}
+.summary{font-weight:500}
+.notes{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+
+/* url anatomy */
+.anatomy-box{display:flex;flex-direction:column;gap:10px}
+.anatomy{
+  font:400 15px/1.7 var(--mono);overflow-wrap:anywhere;word-break:break-all;
+  background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px 14px;
+}
+.anatomy span{border-radius:3px}
+.seg-scheme,.seg-sub{color:var(--muted)}
+.seg-user{background:var(--bad-bg);color:var(--bad);padding:0 2px}
+.seg-reg{background:var(--accent-bg);color:var(--ink);font-weight:500;padding:0 2px}
+.seg-port{background:var(--warn-bg);color:var(--warn);padding:0 2px}
+.seg-path,.seg-query,.seg-hash{color:var(--ink)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:12px;height:12px;border-radius:3px;display:inline-block;border:1px solid var(--line)}
+.owner{font-size:14px}
+.owner b{font-family:var(--mono);font-weight:500;background:var(--accent-bg);padding:1px 6px;border-radius:4px;overflow-wrap:anywhere}
+
+/* findings */
+.findings{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.findings li{padding:14px 0;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:4px}
+.findings li:first-child{border-top:0;padding-top:4px}
+.fhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.pill{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;border-radius:4px;padding:2px 7px;flex:none}
+.pill.high{background:var(--bad-bg);color:var(--bad)}
+.pill.med{background:var(--warn-bg);color:var(--warn)}
+.pill.low{background:var(--accent-bg);color:var(--accent)}
+.ftitle{font-weight:600;flex:1 1 200px;min-width:0}
+.pts{font:500 14px var(--mono);color:var(--muted);font-variant-numeric:tabular-nums}
+.fdetail{color:var(--muted);max-width:68ch}
+.fdetail code{font-family:var(--mono);font-size:13px;color:var(--ink);overflow-wrap:anywhere}
+.empty{color:var(--muted)}
+details.passed summary{cursor:pointer;color:var(--muted);font-size:14px;padding:4px 0}
+details.passed ul{margin:10px 0 0;padding-left:20px;color:var(--muted);font-size:14px;display:flex;flex-direction:column;gap:2px}
+
+/* session list */
+.recent{display:flex;flex-direction:column;gap:8px}
+.recent ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;background:var(--surface);overflow:hidden}
+.recent li+li{border-top:1px solid var(--line)}
+.recent button{
+  width:100%;display:flex;align-items:center;gap:12px;padding:10px 14px;border:0;background:transparent;
+  color:var(--ink);cursor:pointer;text-align:left;font-size:13px;
+}
+.recent button:hover{background:var(--bg)}
+.recent .u{font-family:var(--mono);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.recent .s{font:500 13px var(--mono);font-variant-numeric:tabular-nums;color:var(--muted);flex:none}
+
+/* method */
+.method{display:flex;flex-direction:column;gap:14px;border-top:1px solid var(--line);padding-top:26px}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:560px;font-size:14px}
+th,td{text-align:left;padding:10px 14px;border-top:1px solid var(--line);vertical-align:top}
+thead th{border-top:0;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:500}
+td.n{font-weight:500;white-space:nowrap}
+td.m{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+th.m{text-align:right}
+td{color:var(--muted)}
+td.n{color:var(--ink)}
+.limits{max-width:68ch;color:var(--muted);display:flex;flex-direction:column;gap:10px}
+
+@media (prefers-reduced-motion: reduce){.fill{transition:none}}
+@media (max-width:480px){
+  #result{padding:16px}
+  .go{flex:1 1 100%}
+}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="mark">
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M19 19l6.5 6.5"/><path d="M13 7.5v6.2a2.7 2.7 0 0 1-5.4 0"/></svg>
+      PhishLens
+    </div>
+    <span class="tag">runs in your browser</span>
+  </header>
+
+  <section class="hero">
+    <h1>Check a link before you click it</h1>
+    <p class="lede">Paste a URL and PhishLens reads its structure for the patterns phishing links depend on. The link is never opened and nothing leaves this page.</p>
+  </section>
+
+  <form id="f" class="finder" autocomplete="off">
+    <label class="label" for="url">URL to check</label>
+    <div class="field">
+      <input id="url" name="url" type="text" inputmode="url" spellcheck="false" autocapitalize="off" placeholder="https://example.com/login">
+      <button class="go" type="submit">Analyze</button>
+    </div>
+    <div class="examples" id="examples">
+      <span class="label">Examples</span>
+    </div>
+    <p class="fine">Examples are made-up links. Defanged input such as hxxps://site[.]com works too.</p>
+  </form>
+
+  <section id="result" aria-live="polite" hidden>
+    <span class="example-note" id="exampleNote">Example result. Paste your own link above.</span>
+
+    <div>
+      <div class="rhead">
+        <div>
+          <div class="label">Verdict</div>
+          <div class="verdict" id="verdict"></div>
+          <p class="vsub" id="vsub"></p>
+        </div>
+        <div class="scorebox" aria-label="Risk score"><b id="score">0</b><span>/ 100</span></div>
+      </div>
+      <div style="margin-top:16px">
+        <div class="meter" aria-hidden="true">
+          <div class="zone z1"></div><div class="zone z2"></div><div class="zone z3"></div>
+          <div class="fill" id="fill"></div>
+        </div>
+        <div class="ticks" aria-hidden="true"><span style="left:0">0</span><span style="left:15%">15</span><span style="left:40%">40</span><span style="left:100%">100</span></div>
+      </div>
+      <p class="summary" id="summary" style="margin-top:6px"></p>
+      <div class="notes" id="notes" style="margin-top:8px"></div>
+    </div>
+
+    <div class="anatomy-box" id="anatomyBox">
+      <h2>Where the browser will go</h2>
+      <div class="anatomy" id="anatomy"></div>
+      <div class="legend" id="legend"></div>
+      <p class="owner" id="owner"></p>
+    </div>
+
+    <div>
+      <h2 style="margin-bottom:12px">What was flagged</h2>
+      <ul class="findings" id="findings"></ul>
+      <details class="passed" id="passedWrap" style="margin-top:8px">
+        <summary id="passedSummary"></summary>
+        <ul id="passedList"></ul>
+      </details>
+    </div>
+  </section>
+
+  <section class="recent" id="recent" hidden>
+    <h2>Checked this session</h2>
+    <ul id="recentList"></ul>
+  </section>
+
+  <section class="method">
+    <h2>What PhishLens checks</h2>
+    <p class="lede">Each check adds points when it fires. The total is capped at 100. Under 15 reads as no red flags, 15 to 39 as suspicious, and 40 or more as likely phishing.</p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Check</th><th>What it looks for</th><th class="m">Max pts</th></tr></thead>
+        <tbody id="methodRows"></tbody>
+      </table>
+    </div>
+    <div class="limits">
+      <h2>Limits</h2>
+      <p>PhishLens scores the shape of a link. It does not load the page, look up domain age, or compare against a live blocklist, so a brand-new phishing domain with a clean-looking address can score low, and an odd but harmless link can score high.</p>
+      <p>Treat the result as a second opinion. For a link that matters, also check it against a live reputation service and confirm with the sender through another channel.</p>
+    </div>
+  </section>
+</div>
+
+<script>
+/*ENGINE-START*/
+var BRANDS=[
+  {n:'PayPal',k:['paypal'],d:['paypal.com','paypal.me']},
+  {n:'Google',k:['google','gmail'],d:['google.com','google.com.pk','gmail.com','youtube.com']},
+  {n:'Microsoft',k:['microsoft','office365'],d:['microsoft.com','microsoftonline.com','office.com','live.com','outlook.com','windows.com','msn.com','bing.com']},
+  {n:'Apple',k:['apple','icloud'],d:['apple.com','icloud.com']},
+  {n:'Amazon',k:['amazon'],d:['amazon.com','amazon.co.uk','amazon.in','amazon.de','amazon.ae','amazonaws.com']},
+  {n:'Facebook',k:['facebook'],d:['facebook.com','fb.com','messenger.com']},
+  {n:'Instagram',k:['instagram'],d:['instagram.com']},
+  {n:'WhatsApp',k:['whatsapp'],d:['whatsapp.com','whatsapp.net','wa.me']},
+  {n:'Netflix',k:['netflix'],d:['netflix.com']},
+  {n:'LinkedIn',k:['linkedin'],d:['linkedin.com','lnkd.in']},
+  {n:'GitHub',k:['github'],d:['github.com']},
+  {n:'Dropbox',k:['dropbox'],d:['dropbox.com']},
+  {n:'DocuSign',k:['docusign'],d:['docusign.com','docusign.net']},
+  {n:'Adobe',k:['adobe'],d:['adobe.com']},
+  {n:'X (Twitter)',k:['twitter'],d:['twitter.com','x.com']},
+  {n:'Telegram',k:['telegram'],d:['telegram.org','t.me']},
+  {n:'Steam',k:['steam','steamcommunity','steampowered'],d:['steampowered.com','steamcommunity.com']},
+  {n:'Binance',k:['binance'],d:['binance.com']},
+  {n:'Coinbase',k:['coinbase'],d:['coinbase.com']},
+  {n:'Chase',k:['chase'],d:['chase.com']},
+  {n:'Wells Fargo',k:['wellsfargo'],d:['wellsfargo.com']},
+  {n:'Bank of America',k:['bankofamerica'],d:['bankofamerica.com']},
+  {n:'HSBC',k:['hsbc'],d:['hsbc.com']},
+  {n:'DHL',k:['dhl'],d:['dhl.com','dhl.de']},
+  {n:'FedEx',k:['fedex'],d:['fedex.com']},
+  {n:'UPS',k:['ups'],d:['ups.com']},
+  {n:'USPS',k:['usps'],d:['usps.com']},
+  {n:'Easypaisa',k:['easypaisa'],d:['easypaisa.com.pk']},
+  {n:'JazzCash',k:['jazzcash'],d:['jazzcash.com.pk']},
+  {n:'HBL',k:['hbl'],d:['hbl.com']},
+  {n:'UBL',k:['ubl'],d:['ubl.com.pk']},
+  {n:'Meezan Bank',k:['meezanbank','meezan'],d:['meezanbank.com']},
+  {n:'NADRA',k:['nadra'],d:['nadra.gov.pk']},
+  {n:'FBR',k:['fbr'],d:['fbr.gov.pk']}
+];
+var MULTI={};
+('co.uk org.uk ac.uk gov.uk com.pk net.pk org.pk edu.pk gov.pk com.au net.au org.au co.in net.in org.in co.jp co.za com.br com.cn com.mx com.tr com.sa com.eg com.ng co.ke co.nz com.sg com.my com.hk com.tw com.ar co.id com.ph com.vn com.bd com.np com.lk com.ua co.il com.co').split(' ').forEach(function(x){MULTI[x]=1;});
+var SUS_TLD={};
+('zip mov top xyz click link gq tk ml cf ga work support country kim loan men review stream download rest cam icu buzz monster cyou sbs cfd vip fit surf').split(' ').forEach(function(x){SUS_TLD[x]=1;});
+var SHORTENERS={};
+('bit.ly tinyurl.com t.co goo.gl ow.ly is.gd buff.ly rebrand.ly cutt.ly shorturl.at tiny.cc rb.gy lnkd.in t.ly s.id bl.ink v.gd trib.al soo.gd').split(' ').forEach(function(x){SHORTENERS[x]=1;});
+var KEYWORDS=['login','signin','sign-in','logon','verify','verification','secure','security','account','update','confirm','banking','password','passwd','wallet','recover','unlock','suspended','locked','billing','invoice','payment','authenticate','validate','webscr','support','alert'];
+var BAD_EXT={exe:1,scr:1,msi:1,bat:1,cmd:1,jar:1,apk:1,iso:1,lnk:1,vbs:1,ps1:1,dmg:1};
+var NOT_TYPO={finance:1,instance:1};
+
+function lev(a,b){var m=a.length,n=b.length,d=[],i,j;for(i=0;i<=m;i++){d[i]=[i];}for(j=1;j<=n;j++){d[0][j]=j;}
+  for(i=1;i<=m;i++){for(j=1;j<=n;j++){d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+(a.charAt(i-1)===b.charAt(j-1)?0:1));}}
+  return d[m][n];}
+function entropy(s){var m={},i,h=0,k,p;for(i=0;i<s.length;i++){m[s.charAt(i)]=(m[s.charAt(i)]||0)+1;}
+  for(k in m){p=m[k]/s.length;h-=p*Math.log(p)/Math.LN2;}return h;}
+function norm(t,oneAs){return t.replace(/rn/g,'m').replace(/vv/g,'w').replace(/0/g,'o').replace(/1/g,oneAs).replace(/3/g,'e').replace(/4/g,'a').replace(/5/g,'s').replace(/7/g,'t').replace(/8/g,'b');}
+function has(str,key){return key.length>=6?str.indexOf(key)>=0:str.split(/[.\-]/).indexOf(key)>=0;}
+function safeDecode(s){try{return decodeURIComponent(s);}catch(e){return s;}}
+function splitHost(host){
+  var l=host.split('.'),n=l.length,last2;
+  if(n<=1){return {sub:[],name:host,tld:'',reg:host};}
+  last2=l.slice(-2).join('.');
+  if(n>=3&&MULTI[last2]){return {sub:l.slice(0,n-3),name:l[n-3],tld:last2,reg:l.slice(-3).join('.')};}
+  return {sub:l.slice(0,n-2),name:l[n-2],tld:l[n-1],reg:last2};
+}
+
+var RULES=[
+ {id:'ip',name:'Raw IP address as host',max:40,desc:'The link points at a numeric address instead of a domain name, or hides one in decimal or hex form.',
+  ok:'Host is a domain name, not a raw IP address',
+  run:function(c){
+    if(!c.ip){return null;}
+    var p=30,extra=c.obfuscated?' It was also written in a disguised numeric form, which browsers quietly convert.':'';
+    if(c.obfuscated){p+=10;}
+    return {points:p,title:'Host is an IP address',detail:'The link goes straight to '+c.host+' instead of a named website. Real services almost always use a domain name, while phishing kits on rented or hacked servers often do not.'+extra};
+  }},
+ {id:'userinfo',name:'Text before an @ sign',max:40,desc:'A fake username in front of the real host, such as accounts.google.com@other-site.com.',
+  ok:'No hidden username or password before the host',
+  run:function(c){
+    if(!c.u.username&&!c.u.password){return null;}
+    var dot=c.u.username.indexOf('.')>=0,p=30+(dot?10:0);
+    return {points:p,title:'Has a username part before the host',detail:'Browsers ignore everything before the @ sign. This link actually goes to '+c.host+'.'+(dot?' The text "'+c.u.username+'" looks like an address and is there to make you think you are visiting it.':'')};
+  }},
+ {id:'scheme',name:'No encryption (http)',max:10,desc:'The link uses plain http. A padlock does not prove a site is honest, but its absence on a login page is a warning.',
+  ok:'Link uses https',
+  run:function(c){
+    if(c.assumed){return undefined;}
+    if(c.u.protocol!=='http:'){return null;}
+    return {points:10,title:'Not encrypted (http)',detail:'Traffic to this address is sent in the clear. Any sign-in form on it could be read or altered on the way. Note that https alone is not a sign of safety, since phishing sites use it too.'};
+  }},
+ {id:'punycode',name:'Look-alike characters in the domain',max:25,desc:'Internationalized domain labels (xn--) or non-Latin letters that imitate Latin ones.',
+  ok:'No look-alike (internationalized) characters in the domain',
+  run:function(c){
+    if(c.ip){return null;}
+    var px=c.host.split('.').some(function(l){return l.indexOf('xn--')===0;});
+    if(!px&&!c.nonAscii){return null;}
+    return {points:25,title:'Domain uses look-alike characters',detail:'Part of the domain is written in punycode ('+c.host+'). That happens when a domain mixes in letters from other alphabets, for example a Cyrillic "а" that looks the same as a Latin "a", to imitate a trusted name.'};
+  }},
+ {id:'brandHost',name:'Brand name on an unrelated domain',max:30,desc:'A well-known brand appears in the host while the registered domain belongs to someone else.',
+  ok:'No well-known brand name borrowed by an unrelated domain',
+  run:function(c){
+    var i,j,b,key,low=(c.u.pathname+c.u.search).toLowerCase();
+    if(c.ip||c.official){return undefined;}
+    for(i=0;i<BRANDS.length;i++){b=BRANDS[i];
+      for(j=0;j<b.k.length;j++){key=b.k[j];
+        if(has(c.host,key)&&b.d.indexOf(c.reg)<0){
+          var where=has(c.name,key)?'domain name':'subdomain';
+          return {points:30,title:'Uses '+b.n+'’s name on another domain',detail:'"'+key+'" appears in the '+where+', but the link goes to '+c.reg+', which is not one of '+b.n+'’s domains. Putting a familiar name in front of someone else’s domain is the most common phishing trick.'};
+        }}}
+    for(i=0;i<BRANDS.length;i++){b=BRANDS[i];
+      for(j=0;j<b.k.length;j++){key=b.k[j];
+        if(key.length>=6&&low.indexOf(key)>=0){
+          return {points:8,title:'Mentions '+b.n+' in the path',detail:'The path contains "'+key+'" while the link goes to '+c.reg+'. Pages sometimes borrow a brand name in the path to look official.'};
+        }}}
+    return null;
+  }},
+ {id:'typo',name:'Misspelled brand name',max:35,desc:'A domain word that is one letter off from a known brand, or swaps in look-alike digits (paypa1, g00gle, rn for m).',
+  ok:'No misspelled brand names in the domain',
+  run:function(c){
+    var labels,toks=[],i,j,k,t,b,key,n1,n2,why;
+    if(c.ip){return null;}
+    labels=c.host.split('.');labels.pop();
+    for(i=0;i<labels.length;i++){var parts=labels[i].split('-');for(j=0;j<parts.length;j++){if(parts[j].length>=4){toks.push(parts[j]);}}}
+    for(i=0;i<BRANDS.length;i++){b=BRANDS[i];
+      if(c.official===b){continue;}
+      for(j=0;j<b.k.length;j++){key=b.k[j];
+        for(k=0;k<toks.length;k++){t=toks[k];
+          if(t===key||NOT_TYPO[t]){continue;}
+          n1=norm(t,'l');n2=norm(t,'i');why=null;
+          if(n1===key||n2===key){why='look-alike characters swapped in';}
+          else if(key.length>=6&&t.length>=5&&lev(t,key)===1){why='one letter changed';}
+          if(why){return {points:35,title:'Misspelled '+b.n+' name',detail:'"'+t+'" is a near copy of "'+key+'" ('+why+'). Attackers register spellings like this hoping you will not notice the difference.'};}
+        }}}
+    return null;
+  }},
+ {id:'tld',name:'High-abuse top-level domain',max:15,desc:'Endings often used for throwaway sites, including .zip and .mov that look like file names.',
+  ok:'Top-level domain is not on the high-abuse list',
+  run:function(c){
+    if(c.ip){return null;}
+    var t=c.host.split('.').pop();
+    if(!SUS_TLD[t]){return null;}
+    var fl=(t==='zip'||t==='mov');
+    return {points:fl?15:12,title:'Unusual ending: .'+t,detail:fl?'.'+t+' is both a web domain ending and a common file type, so a link can look like a file name while opening a website.':'.'+t+' is cheap to register and appears far more often in phishing and spam than in normal sites. Many legitimate sites use other endings.'};
+  }},
+ {id:'subdomains',name:'Many subdomains',max:15,desc:'Three or more labels in front of the registered domain, used to push the real name out of view.',
+  ok:'Normal number of subdomains',
+  run:function(c){
+    if(c.ip||c.official){return undefined;}
+    var n=c.sub.length;
+    if(n>=3){return {points:15,title:n+' subdomain levels',detail:'The address stacks '+n+' labels ('+c.sub.join('.')+') in front of '+c.reg+'. Long chains bury the part that matters, so read the link from the right.'};}
+    if(n===2){return {points:6,title:'2 subdomain levels',detail:'Two labels sit in front of '+c.reg+'. Common on real sites, but worth a look when combined with other flags.'};}
+    return null;
+  }},
+ {id:'hyphens',name:'Hyphen-heavy domain',max:10,desc:'Two or more hyphens in the domain name, typical of strung-together lure phrases.',
+  ok:'Domain name has few hyphens',
+  run:function(c){
+    if(c.ip||c.official){return undefined;}
+    if(c.name.indexOf('xn--')===0){return null;}
+    var h=(c.name.match(/-/g)||[]).length;
+    if(h<2){return null;}
+    return {points:10,title:h+' hyphens in the domain name',detail:'"'+c.name+'" joins several words with hyphens. Phishing domains are often built from phrases like secure-login-update because the plain name is taken.'};
+  }},
+ {id:'length',name:'Very long URL or host',max:16,desc:'URLs over 75 characters, or hostnames over 30, that hide the destination in clutter.',
+  ok:'URL and host length are normal',
+  run:function(c){
+    if(c.official){return undefined;}
+    var p=0,len=c.u.href.length,bits=[];
+    if(len>120){p+=10;bits.push('the URL is '+len+' characters');}else if(len>75){p+=5;bits.push('the URL is '+len+' characters');}
+    if(c.host.length>30){p+=6;bits.push('the hostname is '+c.host.length+' characters');}
+    if(!p){return null;}
+    return {points:p,title:'Unusually long address',detail:'Here '+bits.join(' and ')+'. Long addresses make it harder to see where the link really goes.'};
+  }},
+ {id:'keywords',name:'Sign-in and urgency words',max:18,desc:'Words such as login, verify, secure, account, update or suspended in the host, path or query.',
+  ok:'No credential or urgency keywords in the link',
+  run:function(c){
+    if(c.official){return undefined;}
+    var hay=(c.host+c.u.pathname+c.u.search).toLowerCase(),found=[],i;
+    for(i=0;i<KEYWORDS.length;i++){if(hay.indexOf(KEYWORDS[i])>=0){found.push(KEYWORDS[i]);}}
+    if(!found.length){return null;}
+    var p=found.length>=3?18:found.length===2?12:6;
+    return {points:p,title:found.length+(found.length===1?' lure keyword':' lure keywords'),detail:'Found '+found.join(', ')+'. Phishing links lean on words that push you to sign in, confirm or act quickly.'};
+  }},
+ {id:'shortener',name:'Link shortener',max:15,desc:'The link goes through a shortening service, so the real destination is hidden.',
+  ok:'Not a link shortener',
+  run:function(c){
+    if(!SHORTENERS[c.reg]){return null;}
+    return {points:15,title:'Shortened link ('+c.reg+')',detail:'A shortener hides where the link ends up. Expand it with a link-expanding tool before trusting it, and avoid opening it directly on a device with saved logins.'};
+  }},
+ {id:'redirect',name:'Second URL inside the link',max:15,desc:'Another http(s) address embedded in the path or query, a pattern used with open redirects.',
+  ok:'No second URL embedded in the path or query',
+  run:function(c){
+    var tail=safeDecode(c.u.pathname+c.u.search+c.u.hash);
+    if(!/https?:\/\//i.test(tail)&&!/^\/.*\/\//.test(c.u.pathname)){return null;}
+    return {points:15,title:'Another URL is embedded in this one',detail:'The path or query contains a second address. Attackers use this to bounce a visitor through a trusted site to a hostile one.'};
+  }},
+ {id:'random',name:'Machine-generated looking name',max:18,desc:'Domain names made mostly of digits or with high randomness.',
+  ok:'Domain name does not look machine-generated',
+  run:function(c){
+    if(c.ip||c.official){return undefined;}
+    var nm=c.name.replace(/-/g,''),dg=(nm.match(/\d/g)||[]).length,p=0,why=[];
+    if(nm.length>=7&&dg/nm.length>=0.3){p+=10;why.push('about '+Math.round(100*dg/nm.length)+'% of it is digits');}
+    if(nm.length>=12&&entropy(nm)>=3.6){p+=8;why.push('the letters look random');}
+    if(!p){return null;}
+    return {points:p,title:'Domain name looks generated',detail:'In "'+c.name+'", '+why.join(' and ')+'. Throwaway phishing domains are often created in bulk by scripts.'};
+  }},
+ {id:'ext',name:'Executable or installer in the path',max:15,desc:'The path ends in a file type like .exe, .msi, .apk, .iso or .scr.',
+  ok:'Path does not end in an executable or installer',
+  run:function(c){
+    var m=c.u.pathname.match(/\.([a-z0-9]{2,4})$/i);
+    if(!m||!BAD_EXT[m[1].toLowerCase()]){return null;}
+    return {points:15,title:'Links to a .'+m[1].toLowerCase()+' file',detail:'This address downloads a program or disk image instead of showing a web page. Fake update and invoice lures commonly deliver malware this way.'};
+  }},
+ {id:'port',name:'Unusual port',max:8,desc:'A port number other than the standard web ports.',
+  ok:'Standard port',
+  run:function(c){
+    if(!c.u.port){return null;}
+    return {points:8,title:'Non-standard port :'+c.u.port,detail:'Public websites normally use the default ports and hide them. An explicit port is typical of a server someone set up quickly.'};
+  }}
+];
+
+function finish(o){
+  var sum=0,i;
+  for(i=0;i<o.findings.length;i++){sum+=o.findings[i].points;o.findings[i].severity=o.findings[i].points>=25?'high':o.findings[i].points>=10?'med':'low';}
+  o.score=Math.min(100,sum);
+  o.level=o.score>=40?'high':o.score>=15?'med':'low';
+  o.summary=o.findings.length?(o.findings.length+(o.findings.length===1?' red flag. ':' red flags. ')+'Strongest: '+o.findings[0].title+'.'):'None of the checks fired.';
+  return o;
+}
+
+function analyze(input){
+  var raw=String(input==null?'':input).trim();
+  if(!raw){return {error:'Paste a URL to check.'};}
+  var s=raw.replace(/^hxxp/i,'http').replace(/\[\.\]|\(\.\)|\[dot\]/gi,'.');
+  var notes=[];
+  if(s!==raw){notes.push('Defanged input was converted back to a normal link for analysis.');}
+  if(/^(mailto|tel|sms|file|blob):/i.test(s)){return {error:'That is not a web address. PhishLens checks http and https links.'};}
+  if(/^(javascript|data|vbscript):/i.test(s)){
+    return finish({input:raw,parts:null,official:null,notes:notes,passed:[],
+      findings:[{id:'scheme',name:'Script link',points:60,title:'Not a web address',detail:'This link runs code or embeds content in the browser instead of loading a website. Phishing pages are sometimes delivered this way.'}]});
+  }
+  var assumed=false;
+  if(!/^[a-z][a-z0-9+.\-]*:\/\//i.test(s)){s='https://'+s.replace(/^\/+/,'');assumed=true;notes.push('No scheme was given, so https was assumed.');}
+  var u;
+  try{u=new URL(s);}catch(e){return {error:'That does not parse as a URL. Check for spaces or missing parts.'};}
+  if(u.protocol!=='http:'&&u.protocol!=='https:'&&u.protocol!=='ftp:'){return {error:'That is not a web address. PhishLens checks http and https links.'};}
+  var host=u.hostname.toLowerCase();
+  var ip=/^\d{1,3}(\.\d{1,3}){3}$/.test(host)||host.charAt(0)==='[';
+  var sp=ip?{sub:[],name:host,tld:'',reg:host}:splitHost(host);
+  var am=s.match(/^[a-z][a-z0-9+.\-]*:\/\/([^\/?#]*)/i),orig='';
+  if(am){orig=am[1];orig=orig.slice(orig.lastIndexOf('@')+1).replace(/:\d*$/,'').toLowerCase();}
+  var c={u:u,host:host,ip:ip,sub:sp.sub,name:sp.name,tld:sp.tld,reg:sp.reg,assumed:assumed,
+    nonAscii:/[^\x00-\x7f]/.test(orig),obfuscated:ip&&orig.charAt(0)!=='['&&orig!==host,official:null};
+  if(!ip&&!u.username&&!u.password){
+    for(var i=0;i<BRANDS.length;i++){if(BRANDS[i].d.indexOf(c.reg)>=0){c.official=BRANDS[i];break;}}
+  }
+  if(c.official){notes.push('The registered domain matches '+c.official.n+'’s real domain from a short built-in list. Real domains can still host phishing pages such as shared documents or forms, so read the full address too.');}
+  var findings=[],passed=[];
+  RULES.forEach(function(r){
+    var out=r.run(c);
+    if(out===undefined){return;}
+    if(out===null){passed.push(r.ok);}
+    else{out.id=r.id;out.name=r.name;findings.push(out);}
+  });
+  findings.sort(function(a,b){return b.points-a.points;});
+  return finish({input:raw,official:c.official?c.official.n:null,notes:notes,findings:findings,passed:passed,
+    parts:{scheme:u.protocol,username:u.username,password:u.password,sub:sp.sub.join('.'),reg:sp.reg,ip:ip,
+      port:u.port,path:u.pathname,query:u.search,hash:u.hash}});
+}
+/*ENGINE-END*/
+</script>
+
+<script>
+(function(){
+  var $=function(id){return document.getElementById(id);};
+  function el(tag,cls,text){var e=document.createElement(tag);if(cls){e.className=cls;}if(text!=null){e.textContent=text;}return e;}
+
+  var VERDICT={
+    low:{t:'No red flags found',s:'Nothing in this link matches the patterns PhishLens looks for. That does not prove the site is safe.'},
+    med:{t:'Suspicious',s:'This link has traits that phishing links often share. Check the sender and the address before signing in anywhere.'},
+    high:{t:'Likely phishing',s:'This link has several strong red flags. Do not open it or enter any details.'}
+  };
+  var EXAMPLES=[
+    ['Look-alike brand','http://paypa1-secure-login.top/verify/account?id=7781'],
+    ['Unicode look-alike','https://xn--pypal-4ve.com/login'],
+    ['Fake @ trick','https://accounts.google.com@evil-host.click/'],
+    ['Raw IP','http://192.168.4.20:8080/bank/login.php'],
+    ['Deep subdomains','https://secure.login.microsoft.com.account-verify.xyz/update'],
+    ['Local bank lure','https://easypaisa-login.cfd/verify'],
+    ['Shortened','https://bit.ly/3xYzAbC'],
+    ['Real PayPal','https://www.paypal.com/signin']
+  ];
+  var recent=[];
+
+  function renderAnatomy(res){
+    var box=$('anatomyBox');
+    if(!res.parts){box.hidden=true;return;}
+    box.hidden=false;
+    var p=res.parts,a=$('anatomy'),lg=$('legend'),used={};
+    a.textContent='';lg.textContent='';
+    function add(txt,cls,key){if(!txt){return;}a.appendChild(el('span',cls,txt));used[key||cls]=1;}
+    add(p.scheme+'//','seg-scheme','seg-scheme');
+    if(p.username||p.password){add(p.username+(p.password?':'+p.password:'')+'@','seg-user');}
+    if(p.sub){add(p.sub+'.','seg-sub');}
+    add(p.reg,'seg-reg');
+    if(p.port){add(':'+p.port,'seg-port');}
+    add(p.path,'seg-path');add(p.query,'seg-query','seg-path');add(p.hash,'seg-hash','seg-path');
+    var L=[['seg-scheme','Scheme'],['seg-user','Username (ignored by the browser)'],['seg-sub','Subdomains'],['seg-reg',p.ip?'Host (IP address)':'Registered domain'],['seg-port','Port'],['seg-path','Path and query']];
+    L.forEach(function(x){
+      if(!used[x[0]]){return;}
+      var s=el('span');var i=el('i');i.className=x[0];
+      i.style.background=({'seg-user':'var(--bad-bg)','seg-reg':'var(--accent-bg)','seg-port':'var(--warn-bg)','seg-scheme':'var(--surface)','seg-sub':'var(--surface)','seg-path':'var(--surface)'})[x[0]];
+      s.appendChild(i);s.appendChild(document.createTextNode(x[1]));lg.appendChild(s);
+    });
+    var o=$('owner');o.textContent='';
+    o.appendChild(document.createTextNode(p.ip?'This link goes to the server at ':'The owner of this link is '));
+    o.appendChild(el('b',null,p.reg));
+    o.appendChild(document.createTextNode('.'));
+  }
+
+  function render(res,example){
+    var box=$('result');
+    box.hidden=false;box.dataset.level=res.level;
+    $('exampleNote').hidden=!example;
+    $('verdict').textContent=VERDICT[res.level].t;
+    $('vsub').textContent=VERDICT[res.level].s;
+    $('score').textContent=res.score;
+    $('fill').style.width=res.score+'%';
+    $('summary').textContent=res.summary;
+    var n=$('notes');n.textContent='';
+    res.notes.forEach(function(t){n.appendChild(el('p',null,t));});
+    renderAnatomy(res);
+    var fl=$('findings');fl.textContent='';
+    if(!res.findings.length){fl.appendChild(el('li','empty','No checks fired for this link.'));}
+    res.findings.forEach(function(f){
+      var li=el('li'),h=el('div','fhead');
+      h.appendChild(el('span','pill '+f.severity,f.severity==='med'?'Medium':f.severity==='high'?'High':'Low'));
+      h.appendChild(el('span','ftitle',f.title));
+      h.appendChild(el('span','pts','+'+f.points));
+      li.appendChild(h);li.appendChild(el('p','fdetail',f.detail));
+      fl.appendChild(li);
+    });
+    var pw=$('passedWrap'),pl=$('passedList');pl.textContent='';
+    if(res.passed.length){
+      pw.hidden=false;
+      $('passedSummary').textContent=res.passed.length+(res.passed.length===1?' check passed':' checks passed');
+      res.passed.forEach(function(t){pl.appendChild(el('li',null,t));});
+    }else{pw.hidden=true;}
+  }
+
+  function renderRecent(){
+    var wrap=$('recent'),ul=$('recentList');
+    ul.textContent='';
+    if(!recent.length){wrap.hidden=true;return;}
+    wrap.hidden=false;
+    recent.forEach(function(r){
+      var li=el('li'),b=el('button');b.type='button';
+      b.appendChild(el('span','pill '+(r.level==='med'?'med':r.level==='high'?'high':'low'),VERDICT[r.level].t));
+      b.appendChild(el('span','u',r.input));
+      b.appendChild(el('span','s',r.score+'/100'));
+      b.addEventListener('click',function(){$('url').value=r.input;run(r.input);window.scrollTo({top:0,behavior:'smooth'});});
+      li.appendChild(b);ul.appendChild(li);
+    });
+  }
+
+  function run(text){
+    var res=analyze(text);
+    if(res.error){
+      var box=$('result');box.hidden=false;
+      // keep the previous layout simple: show the message in the verdict area
+      box.dataset.level='med';
+      $('exampleNote').hidden=true;
+      $('verdict').textContent='Cannot check this';
+      $('vsub').textContent=res.error;
+      $('score').textContent='0';$('fill').style.width='0%';
+      $('summary').textContent='';$('notes').textContent='';
+      $('anatomyBox').hidden=true;
+      $('findings').textContent='';$('passedWrap').hidden=true;
+      return;
+    }
+    render(res,false);
+    recent=recent.filter(function(r){return r.input!==res.input;});
+    recent.unshift({input:res.input,score:res.score,level:res.level});
+    recent=recent.slice(0,6);
+    renderRecent();
+  }
+
+  var exBox=$('examples');
+  EXAMPLES.forEach(function(x){
+    var b=el('button','chip',x[0]);b.type='button';
+    b.addEventListener('click',function(){$('url').value=x[1];run(x[1]);});
+    exBox.appendChild(b);
+  });
+
+  $('f').addEventListener('submit',function(e){e.preventDefault();run($('url').value);});
+
+  var rows=$('methodRows');
+  RULES.forEach(function(r){
+    var tr=el('tr');
+    tr.appendChild(el('td','n',r.name));
+    tr.appendChild(el('td',null,r.desc));
+    tr.appendChild(el('td','m',String(r.max)));
+    rows.appendChild(tr);
+  });
+
+  var start=EXAMPLES[0][1];
+  $('url').value=start;
+  render(analyze(start),true);
+})();
+</script>
+
+</body></html>
